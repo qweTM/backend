@@ -1,0 +1,989 @@
+openapi: 3.0.0
+info:
+  title: 论坛系统 API
+  description: 提供用户认证、帖子管理、评论互动等功能的论坛系统
+  version: 1.0.0
+  contact:
+    name: Ki Re I
+    email: 3571676852@qq.com
+
+servers:
+  - url: https://api.REforum.com/v1
+    description: 生产环境
+
+tags:
+  - name: 用户认证
+    description: 用户注册、登录、登出相关接口
+  - name: 用户资料
+    description: 用户个人信息管理
+  - name: 帖子管理
+    description: 帖子的发布、编辑、查看
+  - name: 评论管理
+    description: 评论和回复功能
+  - name: 版块分类
+    description: 版块和标签管理
+  - name: 文件上传
+    description: 图片上传功能
+
+paths:
+  # ==================== 用户认证 ====================
+  /auth/send-verification-code:
+    post:
+      tags: [用户认证]
+      summary: 发送注册验证码
+      description: 向指定邮箱发送6位数字验证码，用于注册验证。验证码有效期5分钟，60秒内只能发送一次。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: "user@example.com"
+      responses:
+        '200':
+          description: 验证码发送成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "验证码已发送到您的邮箱"
+                  expiresIn:
+                    type: integer
+                    description: 验证码有效期（秒）
+                    example: 300
+        '400':
+          description: 参数错误或邮箱已注册
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: 发送过于频繁
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "TOO_MANY_REQUESTS"
+                  message:
+                    type: string
+                    example: "验证码发送过于频繁，请稍后再试"
+                  retryAfter:
+                    type: integer
+                    description: 可重试时间（秒）
+                    example: 45
+        '500':
+          description: 服务器错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/register:
+    post:
+      tags: [用户认证]
+      summary: 用户注册
+      description: 用户注册需要提供验证码。请先调用 /auth/send-verification-code 获取验证码。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: 注册成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: 参数错误、验证码错误或用户已存在
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorResponse'
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                        enum: [MISSING_VERIFICATION_CODE, INVALID_VERIFICATION_CODE, USER_EXISTS, EMAIL_EXISTS]
+                        example: "INVALID_VERIFICATION_CODE"
+                      message:
+                        type: string
+                        example: "验证码错误"
+
+  /auth/login:
+    post:
+      tags: [用户认证]
+      summary: 用户登录
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: 用户名或密码错误
+
+  /auth/logout:
+    post:
+      tags: [用户认证]
+      summary: 用户登出
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 登出成功
+        '401':
+          description: 未授权访问
+
+  # ==================== 用户资料 ====================
+  /users/profile:
+    get:
+      tags: [用户资料]
+      summary: 获取当前用户资料
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 成功获取用户资料
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '401':
+          description: 未登录
+
+    put:
+      tags: [用户资料]
+      summary: 更新用户资料
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+
+  /users/{userId}:
+    get:
+      tags: [用户资料]
+      summary: 获取指定用户公开资料
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 成功获取用户资料
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicUserProfile'
+
+  # ==================== 帖子管理 ====================
+  /posts:
+    get:
+      tags: [帖子管理]
+      summary: 获取帖子列表（分页、排序）
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: sort
+          in: query
+          description: 排序方式。time-按时间排序（最新），hot-按点赞数排序（热门，点赞数高的在前）
+          schema:
+            type: string
+            enum: [time, hot]
+            default: time
+        - name: category
+          in: query
+          description: 按版块分类筛选
+          schema:
+            type: integer
+        - name: tag
+          in: query
+          description: 按标签筛选
+          schema:
+            type: string
+        - name: search
+          in: query
+          description: 搜索关键词，会在帖子标题、内容和作者用户名中搜索
+          schema:
+            type: string
+        - name: author
+          in: query
+          description: 按作者ID筛选
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 成功获取帖子列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PostListItem'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+    post:
+      tags: [帖子管理]
+      summary: 发布新帖子
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePostRequest'
+      responses:
+        '201':
+          description: 发布成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostDetail'
+
+  /posts/{postId}:
+    get:
+      tags: [帖子管理]
+      summary: 获取帖子详情
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 成功获取帖子详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostDetail'
+
+    put:
+      tags: [帖子管理]
+      summary: 编辑帖子（仅限作者）
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePostRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostDetail'
+        '403':
+          description: 无权限编辑此帖子
+
+    delete:
+      tags: [帖子管理]
+      summary: 删除帖子（仅限作者）
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "帖子删除成功"
+        '401':
+          description: 未登录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权限删除此帖子（只有作者可以删除）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 帖子不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务器错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /posts/{postId}/like:
+    post:
+      tags: [帖子管理]
+      summary: 点赞/取消点赞帖子
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "点赞成功"
+                  liked:
+                    type: boolean
+                    description: 当前点赞状态
+                    example: true
+                  likeCount:
+                    type: integer
+                    description: 当前点赞数
+                    example: 5
+        '401':
+          description: 未授权访问
+        '404':
+          description: 帖子不存在
+
+    get:
+      tags: [帖子管理]
+      summary: 检查用户是否已点赞
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 成功获取点赞状态
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  liked:
+                    type: boolean
+                    description: 是否已点赞
+                    example: true
+
+  # ==================== 评论管理 ====================
+  /posts/{postId}/comments:
+    get:
+      tags: [评论管理]
+      summary: 获取帖子评论列表
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/PageParam'
+      responses:
+        '200':
+          description: 成功获取评论列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Comment'
+
+    post:
+      tags: [评论管理]
+      summary: 发表评论
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCommentRequest'
+      responses:
+        '201':
+          description: 评论成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+
+  /comments/{commentId}/reply:
+    post:
+      tags: [评论管理]
+      summary: 回复评论
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: commentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCommentRequest'
+      responses:
+        '201':
+          description: 回复成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+
+  # ==================== 版块分类 ====================
+  /categories:
+    get:
+      tags: [版块分类]
+      summary: 获取所有版块分类
+      responses:
+        '200':
+          description: 成功获取版块列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Category'
+
+  /tags:
+    get:
+      tags: [版块分类]
+      summary: 获取热门标签
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 成功获取标签列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Tag'
+
+  # ==================== 文件上传 ====================
+  /upload/image:
+    post:
+      tags: [文件上传]
+      summary: 上传单个图片
+      description: 上传图片文件，支持 JPEG、PNG、GIF、WebP 格式，单张不超过 5MB
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image:
+                  type: string
+                  format: binary
+                  description: 图片文件
+      responses:
+        '200':
+          description: 上传成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "图片上传成功"
+                  url:
+                    type: string
+                    description: 图片访问URL
+                    example: "/uploads/post-1234567890-123456789.jpg"
+                  filename:
+                    type: string
+                    example: "post-1234567890-123456789.jpg"
+                  size:
+                    type: integer
+                    description: 文件大小（字节）
+                    example: 102400
+        '400':
+          description: 参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未授权访问
+        '500':
+          description: 服务器错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /upload/images:
+    post:
+      tags: [文件上传]
+      summary: 上传多个图片
+      description: 批量上传图片文件，最多10张，支持 JPEG、PNG、GIF、WebP 格式，单张不超过 5MB
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [images]
+              properties:
+                images:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: 图片文件数组
+      responses:
+        '200':
+          description: 上传成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "图片上传成功"
+                  files:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        url:
+                          type: string
+                          example: "/uploads/post-1234567890-123456789.jpg"
+                        filename:
+                          type: string
+                          example: "post-1234567890-123456789.jpg"
+                        size:
+                          type: integer
+                          example: 102400
+        '400':
+          description: 参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未授权访问
+        '500':
+          description: 服务器错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 1
+        minimum: 1
+    LimitParam:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 20
+        maximum: 100
+
+  schemas:
+    # ==================== 认证相关 ====================
+    RegisterRequest:
+      type: object
+      required: [username, email, password, verificationCode]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 20
+          pattern: '^[a-zA-Z0-9_]+$'
+          example: "john_doe"
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        password:
+          type: string
+          format: password
+          minLength: 6
+          example: "123456"
+        verificationCode:
+          type: string
+          pattern: '^\d{6}$'
+          description: 6位数字验证码
+          example: "123456"
+
+    LoginRequest:
+      type: object
+      required: [login, password]
+      properties:
+        login:
+          type: string
+          description: 用户名或邮箱
+          example: "john_doe"
+        password:
+          type: string
+          format: password
+          example: "123456"
+
+    AuthResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/UserProfile'
+        token:
+          type: string
+          description: JWT令牌
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+    # ==================== 用户相关 ====================
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        username:
+          type: string
+          example: "john_doe"
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        avatar:
+          type: string
+          description: 头像URL
+          example: "https://example.com/avatar.jpg"
+        bio:
+          type: string
+          description: 个人简介
+          example: "这是一个示例用户简介"
+        joinDate:
+          type: string
+          format: date-time
+          example: "2023-01-15T10:30:00Z"
+        postCount:
+          type: integer
+          example: 42
+        commentCount:
+          type: integer
+          example: 156
+
+    PublicUserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        avatar:
+          type: string
+        bio:
+          type: string
+        joinDate:
+          type: string
+          format: date-time
+        postCount:
+          type: integer
+        commentCount:
+          type: integer
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        avatar:
+          type: string
+        bio:
+          type: string
+          maxLength: 200
+
+    # ==================== 帖子相关 ====================
+    CreatePostRequest:
+      type: object
+      required: [title, content, categoryId]
+      properties:
+        title:
+          type: string
+          minLength: 5
+          maxLength: 200
+          example: "这是一个示例帖子标题"
+        content:
+          type: string
+          minLength: 10
+          example: "这是帖子的详细内容..."
+        categoryId:
+          type: integer
+          example: 1
+        tags:
+          type: array
+          items:
+            type: string
+          example: ["技术", "编程", "Python"]
+
+    UpdatePostRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 5
+          maxLength: 200
+        content:
+          type: string
+          minLength: 10
+        categoryId:
+          type: integer
+        tags:
+          type: array
+          items:
+            type: string
+
+    PostListItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        title:
+          type: string
+          example: "示例帖子标题"
+        excerpt:
+          type: string
+          description: 内容摘要
+          example: "这是内容的摘要..."
+        author:
+          $ref: '#/components/schemas/PublicUserProfile'
+        category:
+          $ref: '#/components/schemas/Category'
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+        viewCount:
+          type: integer
+          example: 150
+        commentCount:
+          type: integer
+          example: 12
+        likeCount:
+          type: integer
+          example: 25
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    PostDetail:
+      allOf:
+        - $ref: '#/components/schemas/PostListItem'
+        - type: object
+          properties:
+            content:
+              type: string
+              example: "这是完整的帖子内容..."
+
+    # ==================== 评论相关 ====================
+    CreateCommentRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          example: "这是一个评论内容"
+        parentId:
+          type: integer
+          description: 父评论ID，用于回复
+          example: 1
+
+    Comment:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        content:
+          type: string
+          example: "评论内容"
+        author:
+          $ref: '#/components/schemas/PublicUserProfile'
+        postId:
+          type: integer
+          example: 1
+        parentId:
+          type: integer
+          description: 父评论ID
+          example: null
+        replies:
+          type: array
+          items:
+            $ref: '#/components/schemas/Comment'
+        likeCount:
+          type: integer
+          example: 5
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # ==================== 版块分类相关 ====================
+    Category:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "技术讨论"
+        description:
+          type: string
+          example: "编程技术相关讨论"
+        postCount:
+          type: integer
+          example: 1500
+        color:
+          type: string
+          description: 分类颜色
+          example: "#3498db"
+
+    Tag:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "Python"
+        postCount:
+          type: integer
+          example: 250
+
+    # ==================== 通用结构 ====================
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 150
+        totalPages:
+          type: integer
+          example: 8
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "INVALID_PARAMETER"
+        message:
+          type: string
+          example: "请求参数无效"
+        details:
+          type: string
+          example: "用户名已存在"
