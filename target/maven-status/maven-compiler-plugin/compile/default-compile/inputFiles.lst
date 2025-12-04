@@ -40,6 +40,7 @@ E:\tran xiangmu\backend\backend\src\main\java\com\example\forum\repository\TagRe
 E:\tran xiangmu\backend\backend\src\main\java\com\example\forum\api\DefaultApi.java
 E:\tran xiangmu\backend\backend\src\main\java\com\example\forum\service\AuthService.java
 E:\tran xiangmu\backend\backend\src\main\java\com\example\forum\model\Pagination.java
+E:\tran xiangmu\backend\backend\src\main\java\com\example\forum\util\TokenGenerator.java
 E:\tran xiangmu\backend\backend\src\main\java\com\example\forum\model\PostListItem.java
 E:\tran xiangmu\backend\backend\src\main\java\com\example\forum\repository\PostRepository.java
 E:\tran xiangmu\backend\backend\src\main\java\com\example\forum\service\JwtTokenService.java

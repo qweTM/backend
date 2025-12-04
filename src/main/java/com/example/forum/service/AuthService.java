@@ -22,6 +22,9 @@ public class AuthService {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private JwtTokenService jwtTokenService;
+
     @Transactional
     public AuthResponse register(RegisterRequest request) {
         // 检查用户名是否已存在
@@ -44,8 +47,8 @@ public class AuthService {
         // 保存用户
         user = userRepository.save(user);
 
-        // 生成简单的token
-        String token = UUID.randomUUID().toString();
+        // 生成JWT token
+        String token = jwtTokenService.generateToken(user.getUsername());
 
         // 返回认证响应
         AuthResponse response = new AuthResponse();
@@ -72,9 +75,8 @@ public class AuthService {
             throw new IllegalArgumentException("用户名或密码错误");
         }
 
-        // 生成token
-        String token = UUID.randomUUID().toString();
-        // 在实际项目中，这里应该保存token到数据库或Redis，并设置过期时间
+        // 生成JWT token
+        String token = jwtTokenService.generateToken(user.getUsername());
 
         // 返回认证响应
         AuthResponse response = new AuthResponse();

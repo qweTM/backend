@@ -12,4 +12,6 @@ public interface UserService extends UserDetailsService {
     PublicUserProfile getPublicUserProfile(Long userId);
     
     UserProfile updateProfile(Long userId, UpdateProfileRequest updateProfileRequest);
+    
+    Long getUserIdByUsername(String username);
 }

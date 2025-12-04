@@ -56,4 +56,5 @@ com\example\forum\model\UserProfile.class
 com\example\forum\config\DataInitializer.class
 com\example\forum\model\PostListItem.class
 com\example\forum\api\DefaultApiImpl.class
+com\example\forum\util\TokenGenerator.class
 com\example\forum\model\PostsGet200Response.class

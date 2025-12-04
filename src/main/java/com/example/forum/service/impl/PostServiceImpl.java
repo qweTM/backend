@@ -141,7 +141,7 @@ public class PostServiceImpl implements PostService {
     }
     
     @Override
-    public List<PostListItem> getPosts(Integer page, Integer limit, String sort, Integer category, String tag) {
+    public Page<PostListItem> getPosts(Integer page, Integer limit, String sort, Integer category, String tag) {
         // 确定排序方向
         Sort.Direction direction = Sort.Direction.DESC;
         String sortField = "createdAt"; // 默认按创建时间排序
@@ -169,26 +169,24 @@ public class PostServiceImpl implements PostService {
         // 创建分页请求
         Pageable pageable = PageRequest.of(page - 1, limit, Sort.by(direction, sortField));
         
-        List<Post> postEntities;
+        Page<Post> postEntities;
         
         // 根据筛选条件查询帖子
         if (category != null && tag != null) {
             // 按分类和标签筛选
-            postEntities = postRepository.findByCategoryIdAndTags_Name(category.longValue(), tag, pageable).getContent();
+            postEntities = postRepository.findByCategoryIdAndTags_Name(category.longValue(), tag, pageable);
         } else if (category != null) {
             // 按分类筛选
-            postEntities = postRepository.findByCategoryId(category.longValue(), pageable).getContent();
+            postEntities = postRepository.findByCategoryId(category.longValue(), pageable);
         } else if (tag != null) {
             // 按标签筛选
-            postEntities = postRepository.findByTags_Name(tag, pageable).getContent();
+            postEntities = postRepository.findByTags_Name(tag, pageable);
         } else {
             // 获取所有帖子
-            postEntities = postRepository.findAll(pageable).getContent();
+            postEntities = postRepository.findAll(pageable);
         }
         
-        return postEntities.stream()
-                .map(this::convertToPostListItem)
-                .collect(java.util.stream.Collectors.toList());
+        return postEntities.map(this::convertToPostListItem);
     }
     
     @Transactional

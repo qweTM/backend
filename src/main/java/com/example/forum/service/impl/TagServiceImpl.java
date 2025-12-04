@@ -27,15 +27,17 @@ public class TagServiceImpl implements TagService {
     
     @Transactional(readOnly = true)
     @Override
-    public List<com.example.forum.model.Tag> getPopularTags() {
+    public List<com.example.forum.model.Tag> getPopularTags(Integer limit) {
         // 获取所有标签，并按使用频率排序
         List<Tag> tags = tagRepository.findAll();
         // 按关联的帖子数量降序排序
         tags.sort((t1, t2) -> Integer.compare(t2.getPosts().size(), t1.getPosts().size()));
         
-        // 返回前20个热门标签
+        // 使用提供的limit参数或默认值20
+        int actualLimit = (limit != null && limit > 0) ? limit : 20;
+        
         return tags.stream()
-                .limit(20)
+                .limit(actualLimit)
                 .map(this::convertToModel)
                 .collect(Collectors.toList());
     }

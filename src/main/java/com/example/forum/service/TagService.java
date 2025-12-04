@@ -8,5 +8,5 @@ public interface TagService {
     
     List<Tag> getAllTags();
     
-    List<Tag> getPopularTags();
+    List<Tag> getPopularTags(Integer limit);
 }

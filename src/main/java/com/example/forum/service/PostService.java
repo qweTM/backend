@@ -17,7 +17,7 @@ public interface PostService {
     
     void deletePost(Integer postId, Long userId);
     
-    List<PostListItem> getPosts(Integer page, Integer limit, String sort, Integer category, String tag);
+    org.springframework.data.domain.Page<PostListItem> getPosts(Integer page, Integer limit, String sort, Integer category, String tag);
     
     void incrementViewCount(Long postId);
 }

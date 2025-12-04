@@ -93,6 +93,14 @@ public class CommentServiceImpl implements CommentService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
+    @Override
+    public com.example.forum.model.Comment getCommentById(Long commentId) {
+        Comment comment = commentRepository.findById(commentId)
+                .orElseThrow(() -> new IllegalArgumentException("评论不存在"));
+        return convertToModel(comment);
+    }
+    
     @Transactional
     @Override
     public com.example.forum.model.Comment updateComment(Long commentId, Long userId, UpdateCommentRequest request) {

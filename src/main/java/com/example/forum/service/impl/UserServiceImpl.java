@@ -98,6 +98,14 @@ public class UserServiceImpl implements UserService {
             .orElseThrow(() -> new IllegalArgumentException("User not found"));
     }
     
+    @Transactional(readOnly = true)
+    @Override
+    public Long getUserIdByUsername(String username) {
+        User user = userRepository.findByUsername(username)
+            .orElseThrow(() -> new IllegalArgumentException("用户不存在"));
+        return user.getId();
+    }
+    
     public User getUserByUsername(String username) {
         return userRepository.findByUsername(username)
             .orElseThrow(() -> new IllegalArgumentException("User not found"));

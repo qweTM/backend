@@ -26,9 +26,13 @@ import com.example.forum.service.CategoryService;
 import com.example.forum.service.TagService;
 import com.example.forum.service.PostLikeService;
 import com.example.forum.service.CommentLikeService;
+import com.example.forum.service.JwtTokenService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.context.request.NativeWebRequest;
 
@@ -45,6 +49,8 @@ public class DefaultApiImpl implements DefaultApi {
     private final NativeWebRequest request;
 
     @Autowired
+    private JwtTokenService jwtTokenService;
+
     public DefaultApiImpl(NativeWebRequest request) {
         this.request = request;
     }
@@ -225,23 +231,19 @@ public class DefaultApiImpl implements DefaultApi {
         
         try {
             // 调用服务层获取帖子列表
-            List<PostListItem> posts = postService.getPosts(page, limit, sort, category, tag);
+            Page<PostListItem> postsPage = postService.getPosts(page, limit, sort, category, tag);
             
             // 创建分页对象
             Pagination pagination = new Pagination();
             pagination.setPage(page);
             pagination.setLimit(limit);
-            
-            // 这里应该从数据库中获取总数，但为了简单起见，我们暂时使用一个合理的估计
-            // 在实际项目中，应该在PostService中添加一个方法来获取总数
-            Integer total = 100;
-            pagination.setTotal(total);
-            pagination.setTotalPages((int) Math.ceil((double) total / limit));
+            pagination.setTotal((int) postsPage.getTotalElements());
+            pagination.setTotalPages(postsPage.getTotalPages());
             
             // 创建响应对象
             PostsGet200Response response = new PostsGet200Response();
             response.setPagination(pagination);
-            response.setData(posts);
+            response.setData(postsPage.getContent());
             
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -313,7 +315,7 @@ public class DefaultApiImpl implements DefaultApi {
     @Override
     public ResponseEntity<List<Tag>> tagsGet(Integer limit) {
         try {
-            List<Tag> tags = tagService.getPopularTags();
+            List<Tag> tags = tagService.getPopularTags(limit);
             return ResponseEntity.ok(tags);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
@@ -328,7 +330,12 @@ public class DefaultApiImpl implements DefaultApi {
         }
         try {
             // 回复评论逻辑：需要指定父评论ID
-            Comment comment = commentService.createComment(userId, commentId.longValue(), createCommentRequest);
+            // 1. 获取父评论，从中提取帖子ID
+            Comment parentComment = commentService.getCommentById(commentId.longValue());
+            // 2. 将请求中的parentId设置为要回复的评论ID
+            createCommentRequest.setParentId(commentId);
+            // 3. 使用父评论的帖子ID调用createComment方法
+            Comment comment = commentService.createComment(Long.valueOf(parentComment.getPostId()), userId, createCommentRequest);
             return ResponseEntity.status(HttpStatus.CREATED).body(comment);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
@@ -344,10 +351,16 @@ public class DefaultApiImpl implements DefaultApi {
             Principal principal = httpRequest.getUserPrincipal();
             if (principal != null) {
                 String username = principal.getName();
-                // 这里简化处理，实际应该通过UserService根据用户名获取用户ID
-                return 1L; // 临时返回，待完善
+                return userService.getUserIdByUsername(username);
             }
         }
         throw new RuntimeException("用户未登录");
+    }
+
+    // 临时测试端点：生成JWT令牌
+    @GetMapping("/generate-token")
+    public ResponseEntity<String> generateToken(@RequestParam String username) {
+        String token = jwtTokenService.generateToken(username);
+        return ResponseEntity.ok(token);
     }
 }
